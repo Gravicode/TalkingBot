@@ -93,7 +93,7 @@ namespace TalkingBot.Helpers
                             IsRunning = true;
                             WriteLog($" >>> Listening to microphone input");
                             WriteLog($" >>> (Just tell the app you're done to finish)");
-                            WriteLog("");
+                            WriteLog();
                             await session.SendAudioAsync(microphoneInput);
                         });
                     }
@@ -174,7 +174,7 @@ namespace TalkingBot.Helpers
             
         }
 
-        void WriteLog(string message)
+        void WriteLog(string message="")
         {
             var Msg = string.IsNullOrEmpty(message) ? "---------------\n" : $"{DateTime.Now.ToString("dd-MMM-yy HH:mm:ss")} => {message}\n";
             Debug.WriteLine(Msg);
@@ -186,7 +186,6 @@ namespace TalkingBot.Helpers
             return GetConfiguredClientForOpenAIWithKey(AppConstants.OpenAIKey);
         }
 
-        
         private RealtimeConversationClient GetConfiguredClientForOpenAIWithKey(string oaiApiKey)
         {
             string oaiEndpoint = "https://api.openai.com/v1";
@@ -194,7 +193,7 @@ namespace TalkingBot.Helpers
             WriteLog($" * Using API key (OPENAI_API_KEY): {oaiApiKey[..5]}**");
 
             OpenAIClient aoaiClient = new(new ApiKeyCredential(oaiApiKey));
-            return aoaiClient.GetRealtimeConversationClient("gpt-4o-realtime-preview-2024-10-01");
+            return aoaiClient.GetRealtimeConversationClient(AppConstants.ModelId);
         }
     }
 }

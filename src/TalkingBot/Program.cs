@@ -15,6 +15,7 @@ namespace TalkingBot
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
             AppConstants.OpenAIKey = ConfigurationManager.AppSettings["OpenAIKey"];
+            AppConstants.ModelId = ConfigurationManager.AppSettings["ModelId"];
             if (string.IsNullOrEmpty(AppConstants.OpenAIKey)) throw new Exception("Open AI Key is required");
             Application.Run(new Form1());
         }
