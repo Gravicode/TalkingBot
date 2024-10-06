@@ -107,7 +107,7 @@ namespace TalkingBot.Helpers
                 // audio transcription with whisper.
                 await session.ConfigureSessionAsync(new ConversationSessionOptions()
                 {
-                    Tools = { finishConversationTool, GetCurrentUtcTimeTool,/* MathTool*/ },
+                    Tools = { finishConversationTool, GetCurrentUtcTimeTool, /*MathTool*/ },
                     InputTranscriptionOptions = new()
                     {
                         Model = "whisper-1",

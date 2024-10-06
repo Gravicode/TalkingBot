@@ -6,7 +6,7 @@ using Microsoft.SemanticKernel.Connectors.OpenAI;
 
 namespace TalkingBot.Helpers;
 
-    public class MathPlugin
+public class MathPlugin
     {
         public string SkillName { get; set; } = "CalculatorSkill";
         public string FunctionName { set; get; } = "Calculator";
@@ -24,19 +24,19 @@ namespace TalkingBot.Helpers;
     {
         var kernelBuilder = Kernel.CreateBuilder();
 #pragma warning disable SKEXP0010 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
-        var kernel = kernelBuilder
-                      .AddOpenAIChatCompletion(modelId: "gpt-4o-mini", orgId:AppConstants.OpenAIOrg, apiKey: AppConstants.OpenAIKey, endpoint: new Uri(AppConstants.OpenAIEndpoint))
+        kernel = kernelBuilder
+                      .AddOpenAIChatCompletion(modelId: "gpt-4o-mini", apiKey: AppConstants.OpenAIKey , serviceId: "gpt4o", endpoint: new Uri(AppConstants.OpenAIEndpoint))//
                       .Build();
 #pragma warning restore SKEXP0010 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
-        SetupSkill(kernel);
+        SetupSkill();
     }
 
-    public void SetupSkill(Kernel kernel, int MaxTokens = 2000, double Temperature = 0.0, double TopP = 1.0)
+    public void SetupSkill(int MaxTokens = 2000, double Temperature = 0.0, double TopP = 1.0)
     {
         try
         {
 
-            this.kernel = kernel;
+            //this.kernel = kernel;
             this.MaxTokens = MaxTokens;
             this.Temperature = Temperature;
             this.TopP = TopP;
