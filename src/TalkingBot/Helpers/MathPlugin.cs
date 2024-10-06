@@ -24,8 +24,8 @@ namespace TalkingBot.Helpers;
     {
         var kernelBuilder = Kernel.CreateBuilder();
 #pragma warning disable SKEXP0010 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
-        kernel = kernelBuilder
-                      .AddOpenAIChatCompletion(modelId: "gpt-4o-mini", apiKey: AppConstants.OpenAIKey, endpoint: new Uri(AppConstants.OpenAIEndpoint), serviceId: "chat-gpt")
+        var kernel = kernelBuilder
+                      .AddOpenAIChatCompletion(modelId: "gpt-4o-mini", orgId:AppConstants.OpenAIOrg, apiKey: AppConstants.OpenAIKey, endpoint: new Uri(AppConstants.OpenAIEndpoint))
                       .Build();
 #pragma warning restore SKEXP0010 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
         SetupSkill(kernel);
@@ -83,7 +83,7 @@ Question: {{ $input }}
                 TopP = TopP
             };
 
-            var CalculatorFunction = kernel.CreateFunctionFromPrompt(skPrompt, executionSettings: setting, functionName: FunctionName);
+            var CalculatorFunction = this.kernel.CreateFunctionFromPrompt(skPrompt, executionSettings: setting, functionName: FunctionName);
 
             ListFunctions.Add(FunctionName, CalculatorFunction);
 
@@ -104,7 +104,7 @@ Question: {{ $input }}
             {
                
              
-                var answer = await kernel.InvokeAsync(ListFunctions[FunctionName], new() { ["input"] = MathQuestion });
+                var answer = await this.kernel.InvokeAsync(ListFunctions[FunctionName], new() { ["input"] = MathQuestion });
 
                 string pattern = @"```\s*(.*?)\s*```";
 

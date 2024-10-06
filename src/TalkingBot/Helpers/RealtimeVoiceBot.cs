@@ -17,22 +17,10 @@ using System.Text.Json.Nodes;
 
 namespace TalkingBot.Helpers
 {
-    public class MathParam
-    {
-        public string type { get; set; }
-        public Properties properties { get; set; }
-        public string[] required { get; set; }
-    }
 
-    public class Properties
+    public class MathParamInput
     {
-        public Math_Question math_question { get; set; }
-    }
-
-    public class Math_Question
-    {
-        public string type { get; set; }
-        public string description { get; set; }
+        public string math_question { get; set; }
     }
 
     public class LogMessage : EventArgs
@@ -94,7 +82,7 @@ namespace TalkingBot.Helpers
                     Description = "Retrieves the current time in UTC.",
                     Parameters = BinaryData.FromString("{}"),
                 };
-               
+
                 ConversationFunctionTool MathTool = new()
                 {
                     Name = "calculate_math",
@@ -102,14 +90,14 @@ namespace TalkingBot.Helpers
                     Parameters = BinaryData.FromString(
                         """
                         {
-                          type: "object",
-                          properties: {
-                            math_question: {
-                              type: "string",
-                              description: "Question with math problem"
+                          "type": "object",
+                          "properties": {
+                            "math_question": {
+                              "type": "string",
+                              "description": "Question with math problem"
                             }
                           },
-                          required: ["math_question"]
+                          "required": ["math_question"]
                         }
                         """),
                 };
@@ -119,7 +107,7 @@ namespace TalkingBot.Helpers
                 // audio transcription with whisper.
                 await session.ConfigureSessionAsync(new ConversationSessionOptions()
                 {
-                    Tools = { finishConversationTool, GetCurrentUtcTimeTool, /*MathTool*/ },
+                    Tools = { finishConversationTool, GetCurrentUtcTimeTool,/* MathTool*/ },
                     InputTranscriptionOptions = new()
                     {
                         Model = "whisper-1",
@@ -198,7 +186,59 @@ namespace TalkingBot.Helpers
                     {
                         WriteLog(outputTranscriptionDeltaUpdate.Delta);
                     }
+                    // Item finished updates arrive when all streamed data for an item has arrived and the
+                    // accumulated results are available. In the case of function calls, this is the point
+                    // where all arguments are expected to be present.
+                    if (update is ConversationItemFinishedUpdate itemFinishedUpdate)
+                    {
 
+                        WriteLog($"  -- Item streaming finished, response_id={itemFinishedUpdate.ResponseId}");
+
+                        if (itemFinishedUpdate.FunctionCallId is not null)
+                        {
+                            if (itemFinishedUpdate.FunctionName == finishConversationTool.Name)
+                            {
+                                WriteLog($" <<< Finish tool invoked -- ending conversation!");
+                                break;
+                            }
+                            else
+                            if (itemFinishedUpdate.FunctionName == GetCurrentUtcTimeTool.Name)
+                            {
+                                var functionOutput = DateTime.UtcNow.ToString("R");
+                                WriteLog($"{itemFinishedUpdate.FunctionName}[{itemFinishedUpdate.FunctionCallId}] => {functionOutput}");
+                                await session.AddItemAsync(ConversationItem.CreateFunctionCallOutput(itemFinishedUpdate.FunctionCallId, functionOutput));
+                                await session.StartResponseTurnAsync();
+                            }
+                            else if (itemFinishedUpdate.FunctionName == MathTool.Name)
+                            {
+                                var json = itemFinishedUpdate.FunctionCallArguments;
+                                var obj = JsonSerializer.Deserialize<MathParamInput>(json);
+                                var functionOutput = await mathPlugin.Calculate(obj.math_question);
+                                WriteLog($"{itemFinishedUpdate.FunctionName}[{itemFinishedUpdate.FunctionCallId}] => {functionOutput}");
+                                await session.AddItemAsync(ConversationItem.CreateFunctionCallOutput(itemFinishedUpdate.FunctionCallId, functionOutput));
+                                await session.StartResponseTurnAsync();
+
+
+                            }
+                            /*
+                            WriteLog($"    + Responding to tool invoked by item: {itemFinishedUpdate.FunctionName}");
+                            ConversationItem functionOutputItem = ConversationItem.CreateFunctionCallOutput(
+                                callId: itemFinishedUpdate.FunctionCallId,
+                                output: "70 degrees Fahrenheit and sunny");
+                            await session.AddItemAsync(functionOutputItem);
+                            */
+                        }
+                        else if (itemFinishedUpdate.MessageContentParts?.Count > 0)
+                        {
+                            Console.Write($"    + [{itemFinishedUpdate.MessageRole}]: ");
+                            foreach (ConversationContentPart contentPart in itemFinishedUpdate.MessageContentParts)
+                            {
+                                Console.Write(contentPart.AudioTranscriptValue);
+                            }
+                            Console.WriteLine();
+                        }
+                    }
+                    /*
                     if (update is ConversationItemStartedUpdate itemStartedUpdate)
                     {
 
@@ -220,7 +260,8 @@ namespace TalkingBot.Helpers
 
 
                         }
-                    }
+                    }*/
+                    /*
                     // response.output_item.done tells us that a model-generated item with streaming content is completed.
                     // That's a good signal to provide a visual break and perform final evaluation of tool calls.
                     if (update is ConversationItemFinishedUpdate itemFinishedUpdate)
@@ -236,7 +277,7 @@ namespace TalkingBot.Helpers
                             WriteLog($"{itemFinishedUpdate.FunctionName} => {itemFinishedUpdate.FunctionCallOutput}");
 
                         }
-                    }
+                    }*/
 
                     if (update is ConversationFunctionCallArgumentsDeltaUpdate functionCallArgumentsDeltaUpdate)
                     {

@@ -16,6 +16,7 @@ namespace TalkingBot
             ApplicationConfiguration.Initialize();
             AppConstants.OpenAIKey = ConfigurationManager.AppSettings["OpenAIKey"];
             AppConstants.ModelId = ConfigurationManager.AppSettings["ModelId"];
+            AppConstants.OpenAIOrg = ConfigurationManager.AppSettings["OpenAIOrg"];
             if (string.IsNullOrEmpty(AppConstants.OpenAIKey)) throw new Exception("Open AI Key is required");
             Application.Run(new Form1());
         }
