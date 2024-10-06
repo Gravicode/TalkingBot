@@ -8,6 +8,7 @@ namespace TalkingBot.Helpers
 {
     public class AppConstants
     {
+        public static string OpenAIEndpoint { set; get; } = "https://api.openai.com/v1";
         public static string OpenAIKey { set; get; }
         public static string ModelId { set; get; }
     }

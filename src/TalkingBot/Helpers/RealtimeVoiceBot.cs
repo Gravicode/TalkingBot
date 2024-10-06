@@ -9,24 +9,49 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using System.Threading;
+using Azure;
+using OpenAI.Chat;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 #pragma warning disable OPENAI002 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
 
 namespace TalkingBot.Helpers
 {
-    public class LogMessage:EventArgs
+    public class MathParam
     {
-        public DateTime Created { get; set; }=DateTime.Now;
+        public string type { get; set; }
+        public Properties properties { get; set; }
+        public string[] required { get; set; }
+    }
+
+    public class Properties
+    {
+        public Math_Question math_question { get; set; }
+    }
+
+    public class Math_Question
+    {
+        public string type { get; set; }
+        public string description { get; set; }
+    }
+
+    public class LogMessage : EventArgs
+    {
+        public DateTime Created { get; set; } = DateTime.Now;
         public string Message { get; set; }
+
+        public bool NewLine { get; set; } = true;
     }
     public class RealtimeVoiceBot
     {
+        MathPlugin mathPlugin { set; get; }
         Thread conversationThread { get; set; }
         public EventHandler<LogMessage> LogMessageReceived;
         CancellationTokenSource cancellationTokenSource;
         public bool IsRunning { get; set; } = false;
         public RealtimeVoiceBot()
         {
-            
+            mathPlugin = new();
         }
         public async Task Stop()
         {
@@ -47,7 +72,7 @@ namespace TalkingBot.Helpers
             }
             cancellationTokenSource = new();
             var token = cancellationTokenSource.Token;
-            conversationThread = new Thread(async() =>
+            conversationThread = new Thread(async () =>
             {
                 // First, we create a client according to configured environment variables (see end of file) and then start
                 // a new conversation session.
@@ -60,14 +85,41 @@ namespace TalkingBot.Helpers
                 {
                     Name = "user_wants_to_finish_conversation",
                     Description = "Invoked when the user says goodbye, expresses being finished, or otherwise seems to want to stop the interaction.",
-                    Parameters = BinaryData.FromString("{}")
+                    Parameters = BinaryData.FromString("{}"),
                 };
+
+                ConversationFunctionTool GetCurrentUtcTimeTool = new()
+                {
+                    Name = "get_current_utc_time",
+                    Description = "Retrieves the current time in UTC.",
+                    Parameters = BinaryData.FromString("{}"),
+                };
+               
+                ConversationFunctionTool MathTool = new()
+                {
+                    Name = "calculate_math",
+                    Description = "Translate a math problem into a expression that can be executed using .net NCalc library",
+                    Parameters = BinaryData.FromString(
+                        """
+                        {
+                          type: "object",
+                          properties: {
+                            math_question: {
+                              type: "string",
+                              description: "Question with math problem"
+                            }
+                          },
+                          required: ["math_question"]
+                        }
+                        """),
+                };
+
 
                 // Now we configure the session using the tool we created along with transcription options that enable input
                 // audio transcription with whisper.
                 await session.ConfigureSessionAsync(new ConversationSessionOptions()
                 {
-                    Tools = { finishConversationTool },
+                    Tools = { finishConversationTool, GetCurrentUtcTimeTool, /*MathTool*/ },
                     InputTranscriptionOptions = new()
                     {
                         Model = "whisper-1",
@@ -76,7 +128,6 @@ namespace TalkingBot.Helpers
 
                 // For convenience, we'll proactively start playback to the speakers now. Nothing will play until it's enqueued.
                 SpeakerOutput speakerOutput = new();
-
                 // With the session configured, we start processing commands received from the service.
                 await foreach (ConversationUpdate update in session.ReceiveUpdatesAsync())
                 {
@@ -95,7 +146,14 @@ namespace TalkingBot.Helpers
                             WriteLog($" >>> (Just tell the app you're done to finish)");
                             WriteLog();
                             await session.SendAudioAsync(microphoneInput);
+
                         });
+                    }
+
+                    if (token.IsCancellationRequested)
+                    {
+                        WriteLog($" <<< Request to stop!");
+                        break;
                     }
 
                     // input_audio_buffer.speech_started tells us that the beginning of speech was detected in the input audio
@@ -122,12 +180,14 @@ namespace TalkingBot.Helpers
                     if (update is ConversationInputTranscriptionFinishedUpdate transcriptionFinishedUpdate)
                     {
                         WriteLog($" >>> USER: {transcriptionFinishedUpdate.Transcript}");
+
                     }
 
                     // response.audio.delta provides incremental output audio generated by the model talking. Here, we
                     // immediately enqueue it for playback on the active speaker output.
                     if (update is ConversationAudioDeltaUpdate audioDeltaUpdate)
                     {
+
                         speakerOutput.EnqueueForPlayback(audioDeltaUpdate.Delta);
                     }
 
@@ -136,9 +196,31 @@ namespace TalkingBot.Helpers
                     // quickly relative to what's heard.
                     if (update is ConversationOutputTranscriptionDeltaUpdate outputTranscriptionDeltaUpdate)
                     {
-                        Console.Write(outputTranscriptionDeltaUpdate.Delta);
+                        WriteLog(outputTranscriptionDeltaUpdate.Delta);
                     }
 
+                    if (update is ConversationItemStartedUpdate itemStartedUpdate)
+                    {
+
+                        if (itemStartedUpdate.FunctionName == GetCurrentUtcTimeTool.Name)
+                        {
+                            var functionOutput = DateTime.UtcNow.ToString("R");
+                            WriteLog($"{itemStartedUpdate.FunctionName}[{itemStartedUpdate.FunctionCallId}] => {functionOutput}");
+                            await session.AddItemAsync(ConversationItem.CreateFunctionCallOutput(itemStartedUpdate.FunctionCallId, functionOutput));
+                            await session.StartResponseTurnAsync();
+                        }
+                        else if (itemStartedUpdate.FunctionName == MathTool.Name)
+                        {
+                            var json = itemStartedUpdate.FunctionCallArguments;
+                            var obj = JsonSerializer.Deserialize<JsonObject>(json);
+                            var functionOutput = await mathPlugin.Calculate(obj["math_question"].GetValue<string>());
+                            WriteLog($"{itemStartedUpdate.FunctionName}[{itemStartedUpdate.FunctionCallId}] => {functionOutput}");
+                            await session.AddItemAsync(ConversationItem.CreateFunctionCallOutput(itemStartedUpdate.FunctionCallId, functionOutput));
+                            await session.StartResponseTurnAsync();
+
+
+                        }
+                    }
                     // response.output_item.done tells us that a model-generated item with streaming content is completed.
                     // That's a good signal to provide a visual break and perform final evaluation of tool calls.
                     if (update is ConversationItemFinishedUpdate itemFinishedUpdate)
@@ -148,6 +230,26 @@ namespace TalkingBot.Helpers
                         {
                             WriteLog($" <<< Finish tool invoked -- ending conversation!");
                             break;
+                        }
+                        else if (itemFinishedUpdate.FunctionName == GetCurrentUtcTimeTool.Name)
+                        {
+                            WriteLog($"{itemFinishedUpdate.FunctionName} => {itemFinishedUpdate.FunctionCallOutput}");
+
+                        }
+                    }
+
+                    if (update is ConversationFunctionCallArgumentsDeltaUpdate functionCallArgumentsDeltaUpdate)
+                    {
+                        //WriteLog($"{functionCallArgumentsDeltaUpdate.Delta} : {functionCallArgumentsDeltaUpdate.CallId}");
+                    }
+
+                    if (update is ConversationFunctionCallArgumentsDoneUpdate functionCallArgumentsDoneUpdate)
+                    {
+
+                        if (functionCallArgumentsDoneUpdate.Name == GetCurrentUtcTimeTool.Name)
+                        {
+                            WriteLog($"function call: {functionCallArgumentsDoneUpdate.Name} [{functionCallArgumentsDoneUpdate.CallId}]");
+
                         }
                     }
 
@@ -160,25 +262,28 @@ namespace TalkingBot.Helpers
                         break;
                     }
 
-                    if (token.IsCancellationRequested)
-                    {
-                        WriteLog($" <<< Request to stop!");
-                        break;
-                    }
-                
+
+
                 }
                 IsRunning = false;
                 WriteLog("Conversation is finished.");
             });
             conversationThread.Start();
-            
+
         }
 
-        void WriteLog(string message="")
+        void WriteLog(string message = "", bool Newline = true)
         {
-            var Msg = string.IsNullOrEmpty(message) ? "---------------\n" : $"{DateTime.Now.ToString("dd-MMM-yy HH:mm:ss")} => {message}\n";
+            var additionalEnd = string.Empty;
+            var Msg = message;
+            if (Newline)
+            {
+                additionalEnd = "\n";
+                Msg = string.IsNullOrEmpty(message) ? $"---------------{additionalEnd}" : $"{DateTime.Now.ToString("dd-MMM-yy HH:mm:ss")} => {message}{additionalEnd}";
+            }
+
             Debug.WriteLine(Msg);
-            LogMessageReceived?.Invoke(this, new() { Message = Msg });
+            LogMessageReceived?.Invoke(this, new() { Message = Msg, NewLine = Newline });
         }
 
         private RealtimeConversationClient GetConfiguredClient()
